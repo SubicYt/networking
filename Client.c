@@ -1,134 +1,93 @@
+#include<winsock2.h>
 #include <stdlib.h>
 #include <stdio.h> 
 #include <sys/types.h>
-#include <winsock2.h>
 #include <ws2tcpip.h>
-#define MYPORT "9000"
-#define BACKLOG 10
 
+#pragma comment(lib, "win2_32.lib")
 
-#pragma comment(lib, "ws2_32.lib");
-
-void *get_in_addr(struct sockaddr *sa){
- if (sa->sa_family == AF_INET) {
-    return &(((struct sockaddr_in*)sa)->sin_addr);
-    }
-
-    return &(((struct sockaddr_in6*)sa)->sin6_addr);
- } //function stolen from beej lol. 
-
+#define PORT_NUM "9090"
+#define back_log 10
+#define BRUH -1
+#define MAX_DATA_SIZE 100
 
 int main(int argc, char* argv[]){
-    WSADATA wsaData; 
-    WORD wVersionRequested;
-    int error;
-
-    wVersionRequested = MAKEWORD(2,2);
-    error = WSAStartup(wVersionRequested, &wsaData);
-
-    if(error !=0){
-        printf("WSA STARTUP FAILED");
-        exit(EXIT_FAILURE);
-    }
-
-    if(argc!=2){
-        printf("Incorrect Usage");
-        exit(EXIT_FAILURE);
-    }
-
-    /*
-    Structure of Our server:
-    Initialize socket,
-    bind to port
-    listen for traffic
-    accept communications
-    read the data stream from client 
-    close the connection.
-    */
-    ADDRINFO hints;
-    ADDRINFO *hints_pointer = &hints; //used to populate hints
-    ADDRINFO* temp;//used in traversing results linked list
-    ADDRINFO *results; //results linked list storing relavent data
-
-    struct sockaddr_in *IPV4_NODE; //used in the for loop below to print out ip addresses. Again, might be temporary
-    struct sockaddr_storage their_addr; // connector's address info
-
-    socklen_t sin_size;
-    char buffer[INET_ADDRSTRLEN]; //used to read out ipaddress (might be temporary);
-    char str[INET6_ADDRSTRLEN];
-    void* address; //used in the for loop below to print out ip addresses. Again, might be temporary
-    int status, numbytes; //used for getaddrinfo() status;
-    char recieved_message_buffer[100];
-    int socket_fd, new_id;
-
-
-    memset(&hints, 0, sizeof(hints));
-    hints_pointer->ai_flags=0;
-    hints_pointer->ai_family = AF_INET;
-    hints_pointer->ai_socktype = SOCK_STREAM;
-    hints_pointer->ai_protocol = 0; //0 for any.
+    WORD wVersionRequired;
+    WSADATA lpWsaData;
+    int WSA_Status;
     
-    status = getaddrinfo(argv[1], MYPORT, &hints, &results);
-    if(status ==0){
-
-        printf("getaddrinfo() successful, returned: %d\n", status);//it worked 
-        //now enter loop to read addresses
-        for(temp = results; temp!=NULL; temp = temp->ai_next){
-
-            if(temp->ai_family==AF_INET){//ensure ipv4, kind of like a confirmation;
-                IPV4_NODE = (struct sockaddr_in *)temp->ai_addr;
-                address = &(IPV4_NODE->sin_addr);
-
-                inet_ntop(temp->ai_family, address, buffer, sizeof(buffer));
-                printf("Using: %s\n", buffer);
-            }else{
-                printf("PLEASE KEEP USAGE TO IPV4 ADDRESS");
-                exit(EXIT_FAILURE);
-            }
-            
-        }
-        freeaddrinfo(results);
-
+    wVersionRequired = MAKEWORD(2,2);
+    
+    WSA_Status = WSAStartup(wVersionRequired, &lpWsaData);
+    if(WSA_Status == 0){
+        printf("WSASTARTUP Success\n");
     }else{
-        printf("failure at getaddrinfo(): error: %d", status);
+        printf("WSASTARTUP FAILED: Error %d", WSA_Status);
         exit(EXIT_FAILURE);
     }
+
+    ADDRINFO hints;
+    memset(&hints, 0, sizeof(hints));
+    ADDRINFO *results;
+    ADDRINFO *hints_ptr;
+    ADDRINFO *temp; //used to iterate through linkedlist;
+    struct sockaddr_in *temp_cast_pointer;
+    void* address;
+
+    int getAddr_status;
+    int connector_socket_fd;
+    char address_to_connect_to_buffer[INET_ADDRSTRLEN];
+    char message_buffer[MAX_DATA_SIZE];
+    int bytes_rec;
+
+    hints_ptr->ai_family = AF_INET;
+    hints_ptr->ai_socktype = SOCK_STREAM;
+    hints_ptr->ai_protocol = 0;
+
+    getAddr_status = getaddrinfo(argv[1], PORT_NUM, &hints, &results);
+    if(getAddr_status != 0){
+        printf("getaddrinfo() failed: %d", getAddr_status);
+        exit(EXIT_FAILURE);
+    }
+    else{
+        printf("getaddrinfo() success\n");
+    }
     
-    for(temp = results; temp!=NULL; temp = temp->ai_next){
-        socket_fd = socket(temp->ai_family, temp->ai_socktype, temp->ai_protocol);
-        if(socket_fd==-1){
-            printf("socket() failure error: %d", socket_fd);
+    for(temp = results; temp != NULL; temp = temp->ai_next){
+        connector_socket_fd = socket(temp->ai_family, temp->ai_socktype, temp->ai_protocol);
+        if(connector_socket_fd==-1){
+            printf("socket() failed");
+            exit(EXIT_FAILURE);
+        }
+        else{
+            printf("socket success\n");
+        }      
+               
+        if(connect(connector_socket_fd, temp->ai_addr, temp->ai_addrlen)==-1){
+            printf("connect() failure");
             exit(EXIT_FAILURE);
         }else{
-            printf("socket() successful, socket_fd: %d\n", socket_fd);
+           break;
         }
-
-        if (connect(socket_fd, temp->ai_addr, temp->ai_addrlen) == -1) {
-                perror("client: connect");
-            closesocket(socket_fd);
-            continue;
-            }
-        break;
     }
 
-    inet_ntop(temp->ai_family,
-        get_in_addr((struct sockaddr *)temp->ai_addr),
-        str, sizeof str);
-        printf("client: connected to %s\n", str);
+    temp_cast_pointer = (struct sockaddr_in *)temp->ai_addr;
+    address = &(temp_cast_pointer->sin_addr);
+    inet_ntop(temp->ai_family, address, address_to_connect_to_buffer, 
+                sizeof(address_to_connect_to_buffer));
+     printf("connected to: %s\n", address_to_connect_to_buffer);
+    
+    printf("here");
+    bytes_rec = recv(connector_socket_fd, message_buffer, MAX_DATA_SIZE-1, 0);
+    if(bytes_rec==-1){
+        printf("Recieved message failure");
+        exit(EXIT_FAILURE);
+    }
 
-    freeaddrinfo(results); //we no longer need this structure;
+    message_buffer[bytes_rec]='\0';
+    printf("MESSAGE RECIEVED: %s", message_buffer);
+    closesocket(connector_socket_fd);
 
-    if ((numbytes = recv(socket_fd, recieved_message_buffer, 99 , 0)) == -1) {
- perror("recv");
- exit(1);
- }
-
- recieved_message_buffer[numbytes] = '\0';
-
- printf("client: received '%s'\n",recieved_message_buffer);
-
- closesocket(socket_fd);
-
- return 0;
+    return 0;
 
 }
